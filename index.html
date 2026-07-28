@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sinator-backend — strojovna</title>
+<style>
+  :root{
+    --bg:#0c0f10;
+    --panel:#12171a;
+    --line:#1f2a2e;
+    --text:#e7ece9;
+    --muted:#7c8b87;
+    --accent:#1db954;
+    --accent-dim:#164a2c;
+    --mono:'SF Mono','Consolas','Menlo',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+    padding:28px 20px 60px;
+    max-width:640px;
+    margin-inline:auto;
+  }
+  .pulse{
+    display:inline-block;width:9px;height:9px;border-radius:50%;
+    background:var(--muted);margin-right:9px;position:relative;top:-1px;
+    transition:background .3s;
+  }
+  .pulse.live{background:var(--accent);box-shadow:0 0 0 0 rgba(29,185,84,.6);animation:ping 1.6s ease-out infinite;}
+  .pulse.dead{background:#c0392b;}
+  @keyframes ping{
+    0%{box-shadow:0 0 0 0 rgba(29,185,84,.5);}
+    70%{box-shadow:0 0 0 9px rgba(29,185,84,0);}
+    100%{box-shadow:0 0 0 0 rgba(29,185,84,0);}
+  }
+  h1{
+    font-size:1.3rem;font-weight:700;letter-spacing:.2px;margin:0 0 6px;
+    display:flex;align-items:center;
+  }
+  .sub{color:var(--muted);font-size:.92rem;line-height:1.5;margin:0 0 28px;}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:20px;margin-bottom:18px;
+  }
+  .card h2{font-size:.78rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:0 0 14px;font-weight:600;}
+  input[type=password], input[type=text]{
+    width:100%;background:#0a0d0e;border:1px solid var(--line);color:var(--text);
+    padding:11px 12px;border-radius:9px;font-family:var(--mono);font-size:.88rem;
+    margin-bottom:10px;
+  }
+  input:focus{outline:none;border-color:var(--accent);}
+  button{
+    background:var(--accent);color:#04140a;border:none;border-radius:9px;
+    padding:11px 18px;font-weight:700;font-size:.88rem;cursor:pointer;width:100%;
+    transition:filter .15s;
+  }
+  button:active{filter:brightness(.9);}
+  button:disabled{background:var(--line);color:var(--muted);}
+  #result{
+    margin-top:14px;font-family:var(--mono);font-size:.82rem;white-space:pre-wrap;
+    word-break:break-word;color:var(--muted);display:none;line-height:1.5;
+  }
+  #result.show{display:block;}
+  #result.ok{color:var(--accent);}
+  #result.err{color:#e07a6f;}
+  table{width:100%;border-collapse:collapse;font-size:.84rem;}
+  td{padding:9px 0;border-bottom:1px solid var(--line);vertical-align:top;}
+  td:last-child{border-bottom:1px solid var(--line);}
+  tr:last-child td{border-bottom:none;}
+  .path{font-family:var(--mono);color:var(--accent);white-space:nowrap;padding-right:14px;}
+  .methods{color:var(--muted);font-family:var(--mono);font-size:.76rem;white-space:nowrap;padding-right:10px;}
+  .desc{color:var(--text);opacity:.85;}
+  footer{color:var(--muted);font-size:.76rem;text-align:center;margin-top:30px;}
+</style>
+</head>
+<body>
+
+  <h1><span class="pulse" id="pulse"></span>sinator-backend</h1>
+  <p class="sub">Strojovna Sinatoru — vlastní náhrada za Trakt API. Žádné cizí výpadky, žádné OAuth. Jen tvoje data v tvé Redis databázi.</p>
+
+  <div class="card">
+    <h2>Test připojení</h2>
+    <input type="password" id="apiKey" placeholder="x-api-key (tvůj API_SECRET)" autocomplete="off">
+    <button id="testBtn" onclick="testConnection()">Otestovat</button>
+    <div id="result"></div>
+  </div>
+
+  <div class="card">
+    <h2>Dostupné endpointy</h2>
+    <table>
+      <tr><td class="path">/api/watchlist</td><td class="methods">GET·POST·DEL</td><td class="desc">Watchlist</td></tr>
+      <tr><td class="path">/api/lists</td><td class="methods">GET·POST</td><td class="desc">Vlastní seznamy</td></tr>
+      <tr><td class="path">/api/lists/:id</td><td class="methods">DEL·PATCH</td><td class="desc">Smazat/přejmenovat</td></tr>
+      <tr><td class="path">/api/lists/:id/items</td><td class="methods">GET·POST·DEL</td><td class="desc">Položky seznamu</td></tr>
+      <tr><td class="path">/api/ratings</td><td class="methods">GET·POST·DEL</td><td class="desc">Hodnocení</td></tr>
+      <tr><td class="path">/api/history</td><td class="methods">GET·POST</td><td class="desc">Historie sledování</td></tr>
+      <tr><td class="path">/api/progress</td><td class="methods">GET·POST·DEL</td><td class="desc">Rozkoukanost</td></tr>
+    </table>
+  </div>
+
+  <footer>Přístup jen s platným x-api-key. Klíč se nikam neukládá, žije jen v tomhle prohlížeči.</footer>
+
+<script>
+async function testConnection() {
+  const key = document.getElementById('apiKey').value.trim();
+  const btn = document.getElementById('testBtn');
+  const out = document.getElementById('result');
+  const pulse = document.getElementById('pulse');
+  if (!key) { out.className = 'show err'; out.textContent = 'Zadej klíč.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Testuju…';
+  out.className = 'show'; out.textContent = 'Volám /api/health…';
+
+  try {
+    const res = await fetch('/api/health', { headers: { 'x-api-key': key } });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      out.className = 'show ok';
+      out.textContent = '✅ Spojení funguje.\nRedis: ' + data.redis + '\nČas serveru: ' + new Date(data.time).toLocaleString('cs-CZ');
+      pulse.className = 'pulse live';
+    } else {
+      out.className = 'show err';
+      out.textContent = '❌ HTTP ' + res.status + '\n' + JSON.stringify(data, null, 2);
+      pulse.className = 'pulse dead';
+    }
+  } catch (e) {
+    out.className = 'show err';
+    out.textContent = '❌ Síťová chyba: ' + e.message;
+    pulse.className = 'pulse dead';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Otestovat';
+  }
+}
+</script>
+</body>
+</html>
