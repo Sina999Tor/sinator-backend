@@ -2,16 +2,27 @@ const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
 
-// Sorted set 'history:movies' / 'history:episodes': score = watched_at (ms),
+// Sorted set 'history:movies' / 'history:episodes' / 'history:shows': score = watched_at (ms),
 // member = JSON string { id, type, season?, episode?, watched_at }
 // Member obsahuje watched_at, takže je vždy unikátní i při rewatch.
+//
+// 'shows' = celý seriál označený jako shlédnutý (bez rozpadu na epizody).
+// 'episodes' = konkrétní zhlédnutá epizoda (má season+episode).
+// 'movies' = film.
+
+function resolveHistoryKey(type, season, episode) {
+  if (type === 'episode' || type === 'episodes') return 'episodes';
+  if (season != null && episode != null) return 'episodes';
+  if (type === 'show' || type === 'shows' || type === 'tv') return 'shows';
+  return 'movies';
+}
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
 
   if (req.method === 'GET') {
-    const type = req.query.type === 'episodes' ? 'episodes' : 'movies';
+    const type = ['episodes', 'shows'].includes(req.query.type) ? req.query.type : 'movies';
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '50', 10);
     const start = (page - 1) * limit;
@@ -29,7 +40,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'POST') {
     const { id, type, season, episode, watched_at } = req.body || {};
     if (!id || !type) return res.status(400).json({ error: 'Chybí id nebo type.' });
-    const key = type === 'episode' || type === 'episodes' ? 'episodes' : 'movies';
+    const key = resolveHistoryKey(type, season, episode);
     const ts = watched_at ? new Date(watched_at).getTime() : Date.now();
     const entry = { id, type: key, season: season ?? null, episode: episode ?? null, watched_at: ts };
     await redis.zadd(`history:${key}`, { score: ts, member: JSON.stringify(entry) });
@@ -39,7 +50,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { id, type, season, episode } = req.body || {};
     if (!id || !type) return res.status(400).json({ error: 'Chybí id nebo type.' });
-    const key = type === 'episode' || type === 'episodes' ? 'episodes' : 'movies';
+    const key = resolveHistoryKey(type, season, episode);
     const all = await redis.zrange(`history:${key}`, 0, -1);
     const toRemove = (all || []).filter(m => {
       try {
