@@ -1,5 +1,6 @@
 const { redis } = require('../../../lib/redis');
 const { checkAuth } = require('../../../lib/auth');
+const { applyCors } = require('../../../lib/cors');
 
 // Hash 'list:{id}:items': field = "movie:603" -> JSON string { id, type, added_at }
 
@@ -15,6 +16,7 @@ async function updateItemCount(listId) {
 }
 
 module.exports = async function handler(req, res) {
+  if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
   const { id } = req.query;
 
