@@ -1,5 +1,6 @@
 const { redis } = require('../../lib/redis');
 const { checkAuth } = require('../../lib/auth');
+const { applyCors } = require('../../lib/cors');
 
 // Hash 'lists:index': field = listId -> JSON string { id, name, created_at, item_count }
 // Položky každého seznamu jsou ve vlastním hashi 'list:{listId}:items'.
@@ -9,6 +10,7 @@ function genId() {
 }
 
 module.exports = async function handler(req, res) {
+  if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
 
   if (req.method === 'GET') {
