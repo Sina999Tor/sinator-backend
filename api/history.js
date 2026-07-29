@@ -1,11 +1,13 @@
 const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
+const { applyCors } = require('../lib/cors');
 
 // Sorted set 'history:movies' / 'history:episodes': score = watched_at (ms),
 // member = JSON string { id, type, season?, episode?, watched_at }
 // Member obsahuje watched_at, takže je vždy unikátní i při rewatch.
 
 module.exports = async function handler(req, res) {
+  if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
 
   if (req.method === 'GET') {

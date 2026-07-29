@@ -1,10 +1,12 @@
 const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
+const { applyCors } = require('../lib/cors');
 
 // Hash 'ratings:movies' / 'ratings:shows': field = tmdbId -> JSON string
 // { id, rating, rated_at }
 
 module.exports = async function handler(req, res) {
+  if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
 
   if (req.method === 'GET') {

@@ -1,10 +1,12 @@
 const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
+const { applyCors } = require('../lib/cors');
 
 // Hash 'watchlist': field = "movie:603" nebo "tv:1399" -> JSON string
 // { id, type, title, year, poster_path, added_at }
 
 module.exports = async function handler(req, res) {
+  if (applyCors(req, res)) return;
   if (!checkAuth(req, res)) return;
 
   if (req.method === 'GET') {
