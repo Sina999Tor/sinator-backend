@@ -36,6 +36,25 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(entry);
   }
 
-  res.setHeader('Allow', 'GET, POST');
+  if (req.method === 'DELETE') {
+    const { id, type, season, episode } = req.body || {};
+    if (!id || !type) return res.status(400).json({ error: 'Chybí id nebo type.' });
+    const key = type === 'episode' || type === 'episodes' ? 'episodes' : 'movies';
+    const all = await redis.zrange(`history:${key}`, 0, -1);
+    const toRemove = (all || []).filter(m => {
+      try {
+        const o = typeof m === 'string' ? JSON.parse(m) : m;
+        if (String(o.id) !== String(id)) return false;
+        if (key === 'episodes' && (season != null || episode != null)) {
+          return String(o.season) === String(season) && String(o.episode) === String(episode);
+        }
+        return true;
+      } catch (e) { return false; }
+    });
+    if (toRemove.length) await redis.zrem(`history:${key}`, ...toRemove);
+    return res.status(200).json({ ok: true, removed: toRemove.length });
+  }
+
+  res.setHeader('Allow', 'GET, POST, DELETE');
   return res.status(405).json({ error: 'Metoda není podporována.' });
 };
