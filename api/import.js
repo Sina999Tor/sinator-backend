@@ -40,13 +40,13 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, count: items.length });
     }
 
-    if (kind === 'history-movies' || kind === 'history-episodes') {
+    if (kind === 'history-movies' || kind === 'history-episodes' || kind === 'history-shows') {
       if (!Array.isArray(items) || !items.length) return res.status(200).json({ ok: true, count: 0 });
-      const key = kind === 'history-episodes' ? 'history:episodes' : 'history:movies';
+      const key = kind === 'history-episodes' ? 'history:episodes' : (kind === 'history-shows' ? 'history:shows' : 'history:movies');
       const pipeline = redis.pipeline();
       for (const it of items) {
         const ts = it.watched_at || Date.now();
-        const entry = { id: it.id, type: kind === 'history-episodes' ? 'episodes' : 'movies', season: it.season ?? null, episode: it.episode ?? null, watched_at: ts };
+        const entry = { id: it.id, type: kind === 'history-episodes' ? 'episodes' : (kind === 'history-shows' ? 'shows' : 'movies'), season: it.season ?? null, episode: it.episode ?? null, watched_at: ts };
         pipeline.zadd(key, { score: ts, member: JSON.stringify(entry) });
       }
       await pipeline.exec();
