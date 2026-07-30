@@ -23,6 +23,18 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     const type = ['episodes', 'shows'].includes(req.query.type) ? req.query.type : 'movies';
+    const idFilter = req.query.id != null ? String(req.query.id) : null;
+
+    // Cílený dotaz na konkrétní položku (bez stránkování celé historie) —
+    // používá appka, když jen potřebuje zjistit stav jednoho filmu/seriálu.
+    if (idFilter) {
+      const all = await redis.zrange(`history:${type}`, 0, -1, { rev: true });
+      const items = (all || [])
+        .map(v => (typeof v === 'string' ? JSON.parse(v) : v))
+        .filter(o => String(o.id) === idFilter);
+      return res.status(200).json(items);
+    }
+
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '50', 10);
     const start = (page - 1) * limit;
