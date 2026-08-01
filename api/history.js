@@ -60,7 +60,7 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
-    const { id, type, season, episode } = req.body || {};
+    const { id, type, season, episode, watched_at } = req.body || {};
     if (!id || !type) return res.status(400).json({ error: 'Chybí id nebo type.' });
     const key = resolveHistoryKey(type, season, episode);
     const all = await redis.zrange(`history:${key}`, 0, -1);
@@ -68,6 +68,7 @@ module.exports = async function handler(req, res) {
       try {
         const o = typeof m === 'string' ? JSON.parse(m) : m;
         if (String(o.id) !== String(id)) return false;
+        if (watched_at != null) return Number(o.watched_at) === Number(watched_at);
         if (key === 'episodes' && (season != null || episode != null)) {
           return String(o.season) === String(season) && String(o.episode) === String(episode);
         }
