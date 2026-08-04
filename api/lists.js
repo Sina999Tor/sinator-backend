@@ -1,7 +1,6 @@
-
-const redis = require('../../lib/redis');
-const checkAuth = require('../../lib/auth');
-const applyCors = require('../../lib/cors');
+const redis = require('../lib/redis');
+const checkAuth = require('../lib/auth');
+const applyCors = require('../lib/cors');
 
 module.exports = async function handler(req, res) {
   if (applyCors(req, res)) return;
@@ -9,7 +8,7 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     try {
-      // Načte všechny uložené seznamy z indexu v Redisu
+      // Načtení všech seznamů z indexu v Redisu
       const rawLists = await redis.hgetall('lists:index');
       if (!rawLists) {
         return res.status(200).json([]);
