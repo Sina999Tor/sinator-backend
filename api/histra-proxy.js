@@ -1,4 +1,3 @@
-
 // api/histra-proxy.js
 // -------------------------------------------------------------------------
 // Proxy endpoint pro histra.net API, aby šlo volat z prohlížeče (Histra API
@@ -7,21 +6,21 @@
 // omezení neplatí a Histra token se nikdy neposílá přes cizí server.
 //
 // Nasazení:
-//   1. Zkopíruj tento soubor do svého repa sinator-backend jako api/histra-proxy.js
-//      (stejná složka jako ostatní api/*.js endpointy, např. check-source.js)
+//   1. Přepiš tímto souborem api/histra-proxy.js ve svém repu sinator-backend
 //   2. Deploy (git push, Vercel to nasadí samo)
-//   3. Hotovo — index.html už na tento endpoint volá automaticky.
+//   3. Hotovo
 //
 // Autentizace: stejná jako u zbytku tvého backendu (x-api-key = API_SECRET
 // env proměnná). Histra token appka posílá zvlášť v hlavičce x-histra-token.
+//
+// Podporuje GET (čtení/sync) a POST/DELETE (zrcadlení přidání/odebrání
+// položek do seznamů a watchlistu v Histře).
 // -------------------------------------------------------------------------
 
 export default async function handler(req, res) {
-    // CORS pro tvou vlastní doménu (Vercel to servíruje ze stejné domény jako
-    // zbytek backendu, ale pro jistotu při lokálním vývoji povolíme *)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-histra-token');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     if (req.method === 'OPTIONS') return res.status(204).end();
 
     // Stejná autentizace jako zbytek backendu
@@ -40,13 +39,18 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Chybí nebo neplatný parametr ?path= (musí začínat /api/v1/).' });
     }
 
-    // Jen GET a POST/DELETE by šly rozšířit později, zatím appka volá jen GET
-    // na Histra (auth/me, catalog/lookup, tracking/history, watchlist, lists).
+    const method = req.method;
+    if (!['GET', 'POST', 'DELETE'].includes(method)) {
+        return res.status(405).json({ error: 'Metoda není povolena.' });
+    }
+
     try {
-        const upstream = await fetch(`https://histra.net${path}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${histraToken}` }
-        });
+        const init = { method, headers: { 'Authorization': `Bearer ${histraToken}`, 'Accept': 'application/json' } };
+        if (method !== 'GET' && req.body !== undefined && req.body !== null && req.body !== '') {
+            init.headers['Content-Type'] = 'application/json';
+            init.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+        }
+        const upstream = await fetch(`https://histra.net${path}`, init);
         const text = await upstream.text();
         let data;
         try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
