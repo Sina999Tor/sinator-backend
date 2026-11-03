@@ -1,4 +1,5 @@
-const { redis } = require('../lib/redis');
+const { redis, redisRaw } = require('../lib/redis');
+const { sendJsonString } = require('../lib/http');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
 const hidx = require('../lib/history-index');
@@ -30,7 +31,7 @@ module.exports = async function handler(req, res) {
     // Cílený dotaz na konkrétní položku — přes index, ne přes celou historii.
     if (idFilter) {
       const items = await hidx.getById(type, idFilter);
-      return res.status(200).json(items);
+      return sendJsonString(req, res, JSON.stringify(items));
     }
 
     const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
@@ -38,16 +39,16 @@ module.exports = async function handler(req, res) {
     const start = (page - 1) * limit;
     const end = start + limit - 1;
 
+    // Raw klient: členy sorted setu jsou už JSON řetězce → jen se slepí do pole (žádný parse/stringify).
     const [total, raw] = await Promise.all([
-      redis.zcard(`history:${type}`),
-      redis.zrange(`history:${type}`, start, end, { rev: true }),
+      redisRaw.zcard(`history:${type}`),
+      redisRaw.zrange(`history:${type}`, start, end, { rev: true }),
     ]);
-    const items = (raw || []).map(v => (typeof v === 'string' ? JSON.parse(v) : v));
-
-    res.setHeader('Access-Control-Expose-Headers', 'X-Pagination-Item-Count, X-Pagination-Page-Count');
-    res.setHeader('X-Pagination-Item-Count', String(total));
-    res.setHeader('X-Pagination-Page-Count', String(Math.max(1, Math.ceil(total / limit))));
-    return res.status(200).json(items);
+    const json = '[' + (raw || []).join(',') + ']';
+    return sendJsonString(req, res, json, {
+      'X-Pagination-Item-Count': String(total),
+      'X-Pagination-Page-Count': String(Math.max(1, Math.ceil(total / limit))),
+    });
   }
 
   if (req.method === 'POST') {

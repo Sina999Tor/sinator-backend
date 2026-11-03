@@ -1,4 +1,5 @@
 const { redis } = require('../lib/redis');
+const { sendJsonString } = require('../lib/http');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
 
@@ -13,7 +14,7 @@ module.exports = async function handler(req, res) {
     const all = await redis.hgetall('watchlist');
     const items = Object.values(all || {}).map(v => (typeof v === 'string' ? JSON.parse(v) : v));
     items.sort((a, b) => (b.added_at || 0) - (a.added_at || 0));
-    return res.status(200).json(items);
+    return sendJsonString(req, res, JSON.stringify(items));
   }
 
   if (req.method === 'POST') {

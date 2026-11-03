@@ -1,4 +1,5 @@
-const { redis } = require('../lib/redis');
+const { redis, redisRaw } = require('../lib/redis');
+const { sendJsonString } = require('../lib/http');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
 
@@ -11,9 +12,8 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     const type = req.query.type === 'shows' ? 'shows' : 'movies';
-    const all = await redis.hgetall(`ratings:${type}`);
-    const items = Object.values(all || {}).map(v => (typeof v === 'string' ? JSON.parse(v) : v));
-    return res.status(200).json(items);
+    const all = await redisRaw.hgetall(`ratings:${type}`);
+    return sendJsonString(req, res, '[' + Object.values(all || {}).join(',') + ']');
   }
 
   if (req.method === 'POST') {
