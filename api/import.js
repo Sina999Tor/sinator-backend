@@ -1,6 +1,7 @@
 const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
+const { idxKey } = require('../lib/history-index');
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -47,7 +48,9 @@ module.exports = async function handler(req, res) {
       for (const it of items) {
         const ts = it.watched_at || Date.now();
         const entry = { id: it.id, type: kind === 'history-episodes' ? 'episodes' : (kind === 'history-shows' ? 'shows' : 'movies'), season: it.season ?? null, episode: it.episode ?? null, watched_at: ts };
-        pipeline.zadd(key, { score: ts, member: JSON.stringify(entry) });
+        const member = JSON.stringify(entry);
+        pipeline.zadd(key, { score: ts, member });
+        pipeline.sadd(idxKey(key.replace('history:', ''), it.id), member);
       }
       await pipeline.exec();
       return res.status(200).json({ ok: true, count: items.length });

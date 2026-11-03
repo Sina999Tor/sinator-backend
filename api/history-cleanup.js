@@ -1,6 +1,7 @@
 const { redis } = require('../lib/redis');
 const { checkAuth } = require('../lib/auth');
 const { applyCors } = require('../lib/cors');
+const { idxKey, ensureIndex } = require('../lib/history-index');
 
 // Jednorázový úklid duplicit v historii sledování. Pro každou unikátní
 // položku (u filmů/seriálů podle id, u epizod podle id+season+episode)
@@ -12,6 +13,7 @@ const { applyCors } = require('../lib/cors');
 // POST /api/history-cleanup  body: { type: 'movies' | 'episodes' | 'shows' | 'all' }
 
 async function cleanupBucket(type) {
+  await ensureIndex(type);
   const key = `history:${type}`;
   const all = await redis.zrange(key, 0, -1);
   const parsed = (all || []).map(m => {
@@ -39,6 +41,20 @@ async function cleanupBucket(type) {
     const BATCH = 500;
     for (let i = 0; i < toRemove.length; i += BATCH) {
       await redis.zrem(key, ...toRemove.slice(i, i + BATCH));
+    }
+    // Udrž sekundární index v souladu (srem po id).
+    const removedById = new Map();
+    for (const it of parsed) {
+      if (keepRaws.has(it.raw)) continue;
+      const k = String(it.obj.id);
+      if (!removedById.has(k)) removedById.set(k, []);
+      removedById.get(k).push(it.raw);
+    }
+    const entries = Array.from(removedById.entries());
+    for (let i = 0; i < entries.length; i += 300) {
+      const p = redis.pipeline();
+      for (const [id, members] of entries.slice(i, i + 300)) p.srem(idxKey(type, id), ...members);
+      await p.exec();
     }
   }
 
