@@ -19,6 +19,8 @@ module.exports = async function handler(req, res) {
   try {
     const { kind, items, name, listId: existingListId } = req.body || {};
     if (!kind) return res.status(400).json({ error: 'Chybí kind.' });
+    // Pojistka: obří import by běžel do timeoutu a pálil CPU — větší sady se mají posílat po částech.
+    if (Array.isArray(items) && items.length > 20000) return res.status(413).json({ error: 'Příliš mnoho položek v jednom importu (max 20000) — pošli to po částech.' });
 
     if (kind === 'watchlist') {
       if (!Array.isArray(items) || !items.length) return res.status(200).json({ ok: true, count: 0 });
