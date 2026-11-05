@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/**/*.js": { "maxDuration": 10 },
+    "api/histra-proxy.js": { "maxDuration": 15 },
+    "api/import.js": { "maxDuration": 30 },
+    "api/history-cleanup.js": { "maxDuration": 30 }
+  }
+}
