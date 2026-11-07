@@ -1,62 +1,38 @@
-// api/histra-proxy.js
-// -------------------------------------------------------------------------
-// Proxy endpoint pro histra.net API, aby šlo volat z prohlížeče (Histra API
-// nemá CORS hlavičky pro volání z webu — je dělané pro appky jako Kodi/Jellyfin).
-// Tenhle soubor běží na TVÉM sinator-backend (Vercel), takže žádné CORS
-// omezení neplatí a Histra token se nikdy neposílá přes cizí server.
-//
-// Autentizace: stejná jako u zbytku tvého backendu (x-api-key = API_SECRET
-// env proměnná). Histra token appka posílá zvlášť v hlavičce x-histra-token.
-//
-// Podporuje GET (čtení/sync) a POST/DELETE (zrcadlení přidání/odebrání
-// položek do seznamů a watchlistu v Histře).
-//
-// Pojistka: volání histra.net má pevný timeout — když Histra neodpovídá, funkce
-// nezůstane viset do limitu (dřív zbytečně pálila Active CPU / čas a končila timeoutem).
-// -------------------------------------------------------------------------
-const { checkAuth } = require('../lib/auth');
-const { applyCors } = require('../lib/cors');
-
-const UPSTREAM_TIMEOUT_MS = 12000;
+// Proxy pro Histra API — histra.net nepovoluje CORS z prohlížeče.
+// Appka volá: <backend>/api/histra-proxy?path=/api/v1/...  s hlavičkami x-api-key (API_SECRET) a x-histra-token.
+const HISTRA_BASE = 'https://histra.net';
 
 module.exports = async function handler(req, res) {
-  if (applyCors(req, res)) return;
-  if (!checkAuth(req, res)) return;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-histra-token');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
-  const histraToken = req.headers['x-histra-token'];
-  if (!histraToken) {
-    return res.status(400).json({ error: 'Chybí x-histra-token hlavička.' });
+  const secret = process.env.API_SECRET;
+  if (!secret || req.headers['x-api-key'] !== secret) return res.status(401).json({ error: 'Unauthorized' });
+
+  const token = req.headers['x-histra-token'];
+  if (!token) return res.status(400).json({ error: 'Chybí x-histra-token' });
+
+  const path = String((req.query && req.query.path) || '');
+  if (!path.startsWith('/api/')) return res.status(400).json({ error: 'Neplatná cesta' });
+
+  const method = String(req.method || 'GET').toUpperCase();
+  const headers = { Authorization: 'Bearer ' + token, Accept: 'application/json' };
+  const init = { method, headers };
+  if (method !== 'GET' && method !== 'HEAD' && req.body !== undefined && req.body !== '') {
+    init.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    headers['Content-Type'] = 'application/json';
   }
 
-  const path = req.query.path;
-  if (!path || typeof path !== 'string' || !path.startsWith('/api/v1/')) {
-    return res.status(400).json({ error: 'Chybí nebo neplatný parametr ?path= (musí začínat /api/v1/).' });
-  }
-
-  const method = req.method;
-  if (!['GET', 'POST', 'DELETE'].includes(method)) {
-    return res.status(405).json({ error: 'Metoda není povolena.' });
-  }
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), UPSTREAM_TIMEOUT_MS);
   try {
-    const init = { method, signal: ctrl.signal, headers: { 'Authorization': `Bearer ${histraToken}`, 'Accept': 'application/json' } };
-    if (method !== 'GET' && req.body !== undefined && req.body !== null && req.body !== '') {
-      init.headers['Content-Type'] = 'application/json';
-      init.body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    }
-    const upstream = await fetch(`https://histra.net${path}`, init);
-    const text = await upstream.text();
-    let data;
-    try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
-    return res.status(upstream.status).json(data);
+    const r = await fetch(HISTRA_BASE + path, init);
+    const text = await r.text();
+    res.status(r.status);
+    res.setHeader('Content-Type', r.headers.get('content-type') || 'application/json');
+    return res.send(text);
   } catch (e) {
-    if (e && e.name === 'AbortError') {
-      return res.status(504).json({ error: `histra.net neodpovědělo do ${UPSTREAM_TIMEOUT_MS / 1000} s.` });
-    }
-    return res.status(502).json({ error: 'Nepodařilo se spojit s histra.net: ' + (e && e.message ? e.message : String(e)) });
-  } finally {
-    clearTimeout(timer);
+    return res.status(502).json({ error: 'Histra nedostupná: ' + (e && e.message ? e.message : e) });
   }
 };
